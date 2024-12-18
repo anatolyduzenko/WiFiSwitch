@@ -16,7 +16,7 @@ const char* defaultUsername = "admin";
 const char* defaultPassword = "password";
 
 // Device settings
-#define EEPROM_SIZE 304
+#define EEPROM_SIZE 512
 
 struct DeviceConfig {
   char wifiSSID[32]; // Wifi Network name
@@ -64,7 +64,7 @@ const char* loginForm = R"rawliteral(
         text-align: center;
       }
       input {
-        width: 100%;
+        width: 95%;
         padding: 10px;
         margin-bottom: 15px;
         border: 1px solid #ccc;
@@ -103,7 +103,7 @@ const char settingsForm[] PROGMEM = R"rawliteral(
   <head>
       <meta charset='UTF-8'>
       <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-      <title>Wifi Switcher Settings</title>
+      <title>Wifi Switch Settings</title>
       <style>
           body {
               font-family: Arial, sans-serif;
@@ -167,9 +167,9 @@ const char settingsForm[] PROGMEM = R"rawliteral(
               <input type='text' id='apiServerToken' name='apiServerToken' placeholder='Enter remote server auth token'>
               <hr/>
               <label for='deviceUser'>Username</label>
-              <input type='password' id='deviceUser' name='deviceUser' placeholder='Enter username' required>
+              <input type='text' id='deviceUser' name='deviceUser' placeholder='Enter username'>
               <label for='devicePassword'>Password</label>
-              <input type='password' id='devicePassword' name='devicePassword' placeholder='Enter password' required>
+              <input type='text' id='devicePassword' name='devicePassword' placeholder='Enter password'>
               <label for='authToken'>Switch Auth Token</label>
               <input type='text' id='authToken' name='authToken' placeholder='Enter switch auth token'>
               <button type='submit'>Save</button>
@@ -185,20 +185,6 @@ WiFiClient wifi; // wifi
 
 const int load = 0; // Set output pin
 const int button = 2; // Set input switch
-
-
-// Configuration functions 
-// Initialize the struct with sample data
-// void initializeConfig() {
-//   strcpy(config.wifiSSID, "MyWiFi");
-//   strcpy(config.wifiPassword, "12345678");
-//   strcpy(config.apiServerIP, "192.168.1.100");
-//   strcpy(config.apiServerToken, "abcdef1234567890");
-//   strcpy(config.deviceName, "WifiSwitch");
-//   strcpy(config.deviceUser, "admin");
-//   strcpy(config.devicePassword, "password");
-//   strcpy(config.authToken, "auth1234567890");
-// }
 
 // Save the struct to EEPROM
 void saveConfig() {
@@ -223,7 +209,29 @@ bool loadConfig() {
 
   EEPROM.end();
   // Validate by checking if `wifiName` is not empty
-  return (config.wifiSSID[0] != '\0');
+ 
+  return (config.wifiSSID[0] != 0xFF);
+}
+
+// Debug function used to print config
+void printConfig() {
+  Serial.println("Device Configuration:");
+  Serial.print("Wi-Fi Name: ");
+  Serial.println(config.wifiSSID);
+  Serial.print("Wi-Fi Pass: ");
+  Serial.println(config.wifiPassword);
+  Serial.print("Device Name: ");
+  Serial.println(config.deviceName);
+  Serial.print("Device User: ");
+  Serial.println(config.deviceUser);
+  Serial.print("Device Pass: ");
+  Serial.println(config.devicePassword);
+  Serial.print("API Server IP: ");
+  Serial.println(config.apiServerIP);
+  Serial.print("API Server Token: ");
+  Serial.println(config.apiServerToken);
+  Serial.print("Auth Token: ");
+  Serial.println(config.authToken);
 }
 
 
@@ -245,14 +253,14 @@ void handleLogin() {
     String username = server.arg("username");
     String password = server.arg("password");
 
-    if (username == defaultUsername && password == defaultPassword) {
+    if ((username.equals(config.deviceUser) && password.equals(config.devicePassword)) || (username.equals(defaultUsername) && password.equals(defaultPassword))) {
       server.sendHeader("Location", String("/settings"), true);
       server.send ( 302, "text/plain", "");
     } else {
       server.send(403, "text/html", "<h1>Login Failed!</h1><p>Invalid credentials. Please try again.</p><script type='text/javascript'>setTimeout(function(){ window.location = '/'; }, 200);</script>");
     }
   } else {
-    server.send(405, "text/plain", "Method Not Allowed");
+    server.send(405, "text/json", "{\"status\":\"success\",\"message\":\"Method Not Allowed\"}");
   }
 }
 
@@ -265,7 +273,7 @@ void handleSettingsForm(){
 void handleSettingsSave() {
   if (server.method() == HTTP_POST) {
     
-    String wifiSSID = server.arg("wifiName");
+    String wifiSSID = server.arg("wifiSSID");
     String wifiPassword = server.arg("wifiPassword");
     String apiServerIP = server.arg("apiServerIP");
     String apiServerToken = server.arg("apiServerToken");
@@ -288,7 +296,8 @@ void handleSettingsSave() {
     saveConfig();
 
     // Send response back to the client
-    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Configuration saved! Restart the device.\"}");
+    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Configuration saved! Restarting the device.\"}");
+    ESP.restart();
   } else {
     server.send(405, "application/json", "{\"status\":\"error\",\"message\":\"Method not allowed!\"}");
   }
@@ -307,25 +316,21 @@ void sendServer(bool state){
 void handleOn(){
   String token = server.arg("token");
   if(!token.equals(config.authToken)) {
-    String message = "access denied";
-    server.send(401, "text/plain", message);
+    server.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Access denied.\"}");
     return;
   }
   turnLoadOn();
-  String message = "success";
-  server.send(200, "text/plain", message);
+  server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Loan On.\"}");
 }
 
 void handleOff(){
   String token = server.arg("token");
   if(!token.equals(config.authToken)) {
-    String message = "access denied";
-    server.send(401, "text/plain", message);
+    server.send(401, "application/json", "{\"status\":\"error\",\"message\":\"Access denied.\"}");
     return;
   }
   turnLoadOff();
-  String message = "success";
-  server.send(200, "text/plain", message);
+  server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Loan Off.\"}");
 }
 
 
@@ -361,6 +366,7 @@ void initVariant() {
 }
 
 void setup(void){
+  Serial.begin(9600);
   pinMode(load, OUTPUT);
   pinMode(button, INPUT_PULLUP); // Important to make INPUT_PULLUP
   turnLoadOff();
@@ -376,11 +382,16 @@ void setup(void){
       delay(500);
       attempts++;
     }
-  } 
+  } else {
+    Serial.println("No Config loaded.");
+    delay(5000);
+  }
   
   if(WiFi.status() != WL_CONNECTED)  {
     WiFi.mode(WIFI_AP); // Set to Access Point mode
     WiFi.softAP(apSSID, apPassword);
+    Serial.println("AP Mode");
+    delay(5000);
   }
   
   // Configure routes
