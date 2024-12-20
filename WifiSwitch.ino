@@ -6,8 +6,9 @@
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #include <EEPROM.h>
+
 extern "C" {
-  #include "user_interface.h"
+#include "user_interface.h"
 }
 
 // Default AP settings 
@@ -35,6 +36,7 @@ String generateToken(int length) {
 struct DeviceConfig {
   char wifiSSID[32]; // Wifi Network name
   char wifiPassword[64]; // Wifi password
+  uint8_t wifiMAC[6]; // Wifi MAC Address
   char deviceName[32]; // Device Name
   char deviceUser[16]; // Device Username
   char devicePassword[16]; // Device Password
@@ -56,6 +58,8 @@ const char* switchForm = R"rawliteral(
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <title>Wifi Switch</title>
     <style>
       body {
@@ -173,6 +177,8 @@ const char* loginForm = R"rawliteral(
   <!DOCTYPE html>
   <html>
   <head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
     <title>Wifi Switch Login</title>
     <style>
       body {
@@ -314,6 +320,13 @@ const char settingsForm[] PROGMEM = R"rawliteral(
         button:hover {
           background-color: #0056b3;
         }
+        button.danger {
+          background-color: red;
+          color: #fff;
+        }
+        button.danger:hover {
+          background-color: #ad0000;
+        }
         a {
           display: block;
           margin-top: 5px;
@@ -323,6 +336,12 @@ const char settingsForm[] PROGMEM = R"rawliteral(
         }
         a:hover {
           text-decoration: underline;
+        }
+        .inline {
+          display:inline;
+        }
+        .right {
+          float:right;
         }
       </style>
       <script>
@@ -339,6 +358,7 @@ const char settingsForm[] PROGMEM = R"rawliteral(
           .then(data => {
             document.getElementById('wifiSSID').value = data.wifiSSID;
             document.getElementById('wifiPassword').value = data.wifiPassword;
+            document.getElementById('wifiMAC').value = data.wifiMAC;
             document.getElementById('apiServerIP').value = data.apiServerIP;
             document.getElementById('apiServerEndpoint').value = data.apiServerEndpoint;
             document.getElementById('apiServerToken').value = data.apiServerToken;
@@ -350,8 +370,17 @@ const char settingsForm[] PROGMEM = R"rawliteral(
           .catch(error => console.error('Error loading settings:', error));
         }
 
-        function TogglePassword() {
+        function ToggleWifiPassword() {
           var x = document.getElementById("wifiPassword");
+          if (x.type === "password") {
+            x.type = "text";
+          } else {
+            x.type = "password";
+          }
+        }
+
+        function ToggleDevicePassword() {
+          var x = document.getElementById("devicePassword");
           if (x.type === "password") {
             x.type = "text";
           } else {
@@ -362,6 +391,7 @@ const char settingsForm[] PROGMEM = R"rawliteral(
         function saveSettings() {
           const wifiSSID = document.getElementById('wifiSSID').value;
           const wifiPassword = document.getElementById('wifiPassword').value;
+          const wifiMAC = document.getElementById('wifiMAC').value;
           const deviceName = document.getElementById('deviceName').value;
           const deviceUser = document.getElementById('deviceUser').value;
           const devicePassword = document.getElementById('devicePassword').value;
@@ -376,7 +406,7 @@ const char settingsForm[] PROGMEM = R"rawliteral(
                  'Content-Type': 'application/json'
             },
             body: JSON.stringify({ 
-              wifiSSID, wifiPassword,
+              wifiSSID, wifiPassword, wifiMAC,
               deviceName, deviceUser, devicePassword,
               apiServerIP, apiServerEndpoint, apiServerToken,
               authToken
@@ -415,15 +445,28 @@ const char settingsForm[] PROGMEM = R"rawliteral(
   <body>
     <div class='container'>
       <h2>Wifi Switch Settings</h2>
+      <a href='/'>Back to main screen</a>
       <form id='settingsForm' action='/settings' method='POST'>
         <label for='wifiSSID'>Wifi SSID</label>
         <input type='text' id='wifiSSID' name='wifiSSID' placeholder='Enter wireless network name' required>
-        <label for='wifiPassword'>Wifi Password</label>
+        <label for='wifiPassword' class='inline'>Wifi Password</label>
+        <label for='showPW' class='inline right'>Show</label>
+        <input id='showPW' class='right' type='checkbox' onclick='ToggleWifiPassword()'>
         <input type='password' id='wifiPassword' name='wifiPassword' placeholder='Enter password' required>
-        <label for='showPW'>Show Password</label>
-        <input id='showPW' type='checkbox' onclick='TogglePassword()'>
+        <label for='wifiMAC'>Wifi MAC Address</label>
+        <input type='text' id='wifiMAC' name='wifiMAC' placeholder='Enter device MAC Address' required>
+        <hr/>
         <label for='deviceName'>Device Name</label>
         <input type='text' id='deviceName' name='deviceName' placeholder='Enter switch name'>
+        <label for='deviceUser'>Username</label>
+        <input type='text' id='deviceUser' name='deviceUser' placeholder='Enter username'>
+        <label for='devicePassword' class='inline'>Password</label>
+        <label for='showDPW' class='inline right'>Show</label>
+        <input id='showDPW' class='right' type='checkbox' onclick='ToggleDevicePassword()'>
+        <input type='password' id='devicePassword' name='devicePassword' placeholder='Enter password'>
+        <label for='authToken'>Authorization Token</label>
+        <input type='text' id='authToken' name='authToken' placeholder='Enter authorization token'>
+        <a href='#' onclick='generateToken()'>Generate token</a>
         <hr/>
         <label for='apiServerIP'>API Server IP</label>
         <input type='text' id='apiServerIP' name='apiServerIP' placeholder='Enter remote server IP'>
@@ -432,15 +475,11 @@ const char settingsForm[] PROGMEM = R"rawliteral(
         <label for='apiServerToken'>API Server Token</label>
         <input type='text' id='apiServerToken' name='apiServerToken' placeholder='Enter remote server auth token'>
         <hr/>
-        <label for='deviceUser'>Username</label>
-        <input type='text' id='deviceUser' name='deviceUser' placeholder='Enter username'>
-        <label for='devicePassword'>Password</label>
-        <input type='text' id='devicePassword' name='devicePassword' placeholder='Enter password'>
-        <hr/>
-        <label for='authToken'>Switch Authorization Token</label>
-        <input type='text' id='authToken' name='authToken' placeholder='Enter switch authorization token'>
-        <a href="#" onclick="generateToken()">Generate token</a>
         <button type='button' onclick='saveSettings()'>Save</button>
+      </form>
+      <form action='/restart' method='POST'>
+        <input type='hidden' name='token' value='{TOKEN}' />
+        <button class='danger' type='submit' >Restart</button>
       </form>
     </div>
   </body>
@@ -477,7 +516,6 @@ bool loadConfig() {
 
   EEPROM.end();
   // Validate by checking if `wifiSSID` is not empty
- 
   return (config.wifiSSID[0] != 0xFF);
 }
 
@@ -486,6 +524,7 @@ String getConfigAsJson() {
   JsonDocument jsonDoc;
   jsonDoc["wifiSSID"] = config.wifiSSID;
   jsonDoc["wifiPassword"] = config.wifiPassword;
+  jsonDoc["wifiMAC"] = macToString(config.wifiMAC);
   jsonDoc["apiServerIP"] = config.apiServerIP;
   jsonDoc["apiServerEndpoint"] = config.apiServerEndpoint;
   jsonDoc["apiServerToken"] = config.apiServerToken;
@@ -522,6 +561,41 @@ void printConfig() {
   Serial.println(config.authToken);
 }
 
+// convert MAC string to array
+bool parseMAC(const String &macStr, uint8_t mac[6]) {
+  if (macStr.length() != 17) { 
+    return false;
+  }
+
+  int values[6];
+  if (sscanf(macStr.c_str(), "%x:%x:%x:%x:%x:%x", 
+             &values[0], &values[1], &values[2], 
+             &values[3], &values[4], &values[5]) == 6) {
+    for (int i = 0; i < 6; i++) {
+      mac[i] = (uint8_t)values[i];
+    }
+    return true;
+  }
+  return false;
+}
+
+//convert MAC array to string
+String macToString(uint8_t mac[6]) {
+  char macStr[18]; // Buffer for "XX:XX:XX:XX:XX:XX" format
+  snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(macStr);
+}
+
+// validate MAC
+bool validateMAC(uint8_t mac[6]) {
+  for (int i = 0; i < 6; i++) {
+    if (mac[i] < 0x00 || mac[i] > 0xFF) {
+      return false; // Invalid byte found
+    }
+  }
+  return true; // MAC is valid
+}
 
 // Web management interface
 // Authorization page
@@ -586,6 +660,7 @@ void handleSettingsSave() {
 
     String wifiSSID = doc["wifiSSID"];
     String wifiPassword = doc["wifiPassword"];
+    String wifiMAC = doc["wifiMAC"];
     String apiServerIP = doc["apiServerIP"];
     String apiServerEndpoint = doc["apiServerEndpoint"];
     String apiServerToken = doc["apiServerToken"];
@@ -594,20 +669,11 @@ void handleSettingsSave() {
     String devicePassword = doc["devicePassword"];
     String authToken = doc["authToken"];
 
-//     String wifiSSID = server.arg("wifiSSID");
-//     String wifiPassword = server.arg("wifiPassword");
-//     String apiServerIP = server.arg("apiServerIP");
-//     String apiServerEndpoint = server.arg("apiServerEndpoint");
-//     String apiServerToken = server.arg("apiServerToken");
-//     String deviceName = server.arg("deviceName");
-//     String deviceUser = server.arg("deviceUser");
-//     String devicePassword = server.arg("devicePassword");
-//     String authToken = server.arg("authToken");
-
-    
     // Ensure no buffer overflows
     wifiSSID.toCharArray(config.wifiSSID, sizeof(config.wifiSSID));
     wifiPassword.toCharArray(config.wifiPassword, sizeof(config.wifiPassword));
+    // wifiMAC.toCharArray(config.wifiMAC, sizeof(config.wifiMAC));
+    parseMAC(wifiMAC, config.wifiMAC);
     apiServerIP.toCharArray(config.apiServerIP, sizeof(config.apiServerIP));
     apiServerEndpoint.toCharArray(config.apiServerEndpoint, sizeof(config.apiServerEndpoint));
     apiServerToken.toCharArray(config.apiServerToken, sizeof(config.apiServerToken));
@@ -714,11 +780,6 @@ void toggleLoadState(){
   }
 }
 
-void initVariant() {
-  uint8_t mac[6] = {0x00, 0xA3, 0xA0, 0x1C, 0x8C, 0x45};
-  wifi_set_macaddr(STATION_IF, &mac[0]);
-}
-
 void setup(void){
   Serial.begin(9600);
   pinMode(load, OUTPUT);
@@ -727,6 +788,16 @@ void setup(void){
   
   if (loadConfig()) {
     WiFi.mode(WIFI_STA);
+
+    if (validateMAC(config.wifiMAC) == true) {
+      uint8_t wifiMAC[6] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+      memcpy(wifiMAC, config.wifiMAC, sizeof(config.wifiMAC));
+      if (wifi_set_macaddr(STATION_IF, wifiMAC)) {
+        Serial.println("MAC address successfully set.");
+      } else {
+        Serial.println("Failed to set MAC address.");
+      }
+    }
     WiFi.hostname(config.deviceName);
     WiFi.begin(config.wifiSSID, config.wifiPassword);
 
@@ -780,6 +851,7 @@ void setup(void){
   Serial.println("OTA Ready");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
+  Serial.println(WiFi.macAddress());
 }
 
 void loop(void){
