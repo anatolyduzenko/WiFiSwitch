@@ -598,7 +598,6 @@ bool validateMAC(uint8_t mac[6]) {
 }
 
 // Web management interface
-// Authorization page
 void handleRoot() { 
   String html = switchForm; 
   html.replace("{TOKEN}", config.authToken); 
@@ -642,12 +641,9 @@ void handleLogin() {
 
 // Settings form handler
 void handleSettingsForm(){
-  //String token = server.arg("token");
-  //if(!token.equals(config.authToken)) {
     String html = settingsForm; 
     html.replace("{TOKEN}", config.authToken); 
     server.send(200, "text/html", html);
-  //}
 }
 
 // Settings form saving handler
@@ -672,7 +668,6 @@ void handleSettingsSave() {
     // Ensure no buffer overflows
     wifiSSID.toCharArray(config.wifiSSID, sizeof(config.wifiSSID));
     wifiPassword.toCharArray(config.wifiPassword, sizeof(config.wifiPassword));
-    // wifiMAC.toCharArray(config.wifiMAC, sizeof(config.wifiMAC));
     parseMAC(wifiMAC, config.wifiMAC);
     apiServerIP.toCharArray(config.apiServerIP, sizeof(config.apiServerIP));
     apiServerEndpoint.toCharArray(config.apiServerEndpoint, sizeof(config.apiServerEndpoint));
@@ -716,6 +711,7 @@ void handleLoadSettings(){
   }
 }
 
+// Security token generation
 void handleGenerateToken() {
   String token = generateToken(16);
   server.send(200, "application/json", "{\"status\":\"success\",\"authToken\":\""+token+"\"}");
@@ -759,13 +755,13 @@ void handleOff(){
 // Manipulations with the load
 // Switch On
 void turnLoadOn(){
-  digitalWrite(load, HIGH);
+  digitalWrite(load, LOW);
   load_on = true;
 }
 
 // Switch Off
 void turnLoadOff(){
-  digitalWrite(load, LOW);
+  digitalWrite(load, HIGH);
   load_on = false;
 }
 
